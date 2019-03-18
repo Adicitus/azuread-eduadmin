@@ -1,4 +1,7 @@
-﻿Param(
+﻿#require -Modules AzureAD
+#TODO: Add options to generate Azure ResourceGroups for the students. Needs to specify which Subscription to use.
+
+Param(
     [parameter(Mandatory=$true, HelpMessage="Number of users to generate. (0-2000)", ParameterSetName="series")]
     [ValidateRange(0, 2000)]
     [int]$Count,
@@ -25,9 +28,9 @@
     [parameter(Mandatory=$false, HelpMessage="Date that the course will commence on.")]
     [datetime]$CourseStart = [datetime]::now,
 
-    [parameter(Mandatory=$false, HelpMessage="How long the account should remain accessible after the start of the course (1-365, default 14)")]
+    [parameter(Mandatory=$false, HelpMessage="How long the account should remain accessible after the start of the course (1-365, default 7)")]
     [ValidateRange(1, 365)]
-    [int]$ValidityDays = 14,
+    [int]$ValidityDays = 7,
 
     [parameter(Mandatory=$false, HelpMessage="Credential to use when connecting to the tennant")]
     [pscredential]$Credential,
@@ -35,8 +38,6 @@
     [parameter(Mandatory=$false, HelpMessage="Domain to use for the UserPrincipalname. Must be a domain registered to the tenant.")]
     [string]$Domain
 )
-
-Import-Module AzureAD -ErrorAction Stop
 
 $ValidTo = [datetime]::new($CourseStart.Year, $CourseStart.Month, $CourseStart.Day) + ([timespan]::FromDays($ValidityDays)) 
 
@@ -51,9 +52,9 @@ if (!$PSBoundParameters.ContainsKey("Credential")) {
     $Credential = Get-Credential -Message "Please enter your connection credentials." -ErrorAction Stop
 }
 
-$connectionDetails = Connect-AzureAD -Credential $Credential -ErrorAction Stop
+$connectionDetailsAD = Connect-AzureAD -Credential $Credential -ErrorAction Stop
 
-Write-Host ("Logged on to '{0}' ({1}) as '{2}'" -f $connectionDetails.TenantDomain, $connectionDetails.Environment, $connectionDetails.Account) -ForegroundColor Magenta
+"Logged on to AzureAD '{0}' ({1}) as '{2}'" -f $connectionDetailsAD.TenantDomain, $connectionDetailsAD.Environment, $connectionDetailsAD.Account | Write-Host -ForegroundColor Magenta
 
 $oldErrorActionPreference = $ErrorActionPreference
 $ErrorActionPreference = "Stop"
@@ -77,8 +78,8 @@ try{
         Write-Host "Using given domain ('$Domain')" -ForegroundColor Green
         $Domain
     } else {
-        Write-Host "Using tenant domain ($($connectionDetails.tenantDomain))" -ForegroundColor Yellow
-        $connectionDetails.tenantDomain
+        Write-Host "Using tenant domain ($($connectionDetailsAD.tenantDomain))" -ForegroundColor Yellow
+        $connectionDetailsAD.tenantDomain
     }
 
 
@@ -133,7 +134,7 @@ try{
         Write-Host "Done!" -ForegroundColor Green
     }
 
-    $studentDetails | % { "{0},{1},{2}" -f $_.UserPrincipalName,$ValidTo.Ticks,$connectionDetails.TenantId } | Out-File "$PSScriptRoot\students.csv" -Encoding utf8 -Append
+    $studentDetails | % { "{0},{1},{2}" -f $_.UserPrincipalName,$ValidTo.Ticks,$connectionDetailsAD.TenantId } | Out-File "$PSScriptRoot\students.csv" -Encoding utf8 -Append
 
     Write-Host ("-"*80)
     $studentDetails | % UserPrincipalName | Write-Host -ForegroundColor White
