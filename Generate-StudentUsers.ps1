@@ -1,5 +1,4 @@
-﻿#require -Modules AzureAD
-#TODO: Add options to generate Azure ResourceGroups for the students. Needs to specify which Subscription to use.
+﻿#require -Modules AzureAD, AzureRM
 
 Param(
     [parameter(Mandatory=$true, HelpMessage="Number of users to generate. (0-2000)", ParameterSetName="series")]
@@ -36,7 +35,10 @@ Param(
     [pscredential]$Credential,
 
     [parameter(Mandatory=$false, HelpMessage="Domain to use for the UserPrincipalname. Must be a domain registered to the tenant.")]
-    [string]$Domain
+    [string]$Domain,
+
+    [parameter(Mandatory=$false, HelpMessage="Generate a Resource Group within the given Azure Subscription.")]
+    [String]$AzureSubscription
 )
 
 $ValidTo = [datetime]::new($CourseStart.Year, $CourseStart.Month, $CourseStart.Day) + ([timespan]::FromDays($ValidityDays)) 
@@ -53,8 +55,32 @@ if (!$PSBoundParameters.ContainsKey("Credential")) {
 }
 
 $connectionDetailsAD = Connect-AzureAD -Credential $Credential -ErrorAction Stop
-
 "Logged on to AzureAD '{0}' ({1}) as '{2}'" -f $connectionDetailsAD.TenantDomain, $connectionDetailsAD.Environment, $connectionDetailsAD.Account | Write-Host -ForegroundColor Magenta
+
+if ($AzureSubscription) {
+    try{
+        $connectionDetailsRM = Connect-AzureRmAccount -Credential $Credential -ErrorAction Stop
+        "Logged on to Azure as '{0}'" -f $connectionDetailsRM.Context.Account.Id | Write-Host -ForegroundColor Magenta
+    } catch {
+        Write-Host "Unable to connect to to Azure Tennant." -ForegroundColor Red
+        $_ | Out-String | Write-Host -ForegroundColor Gray
+        Write-Host "Disconnecting from AzureAD and and quitting."
+        Disconnect-AzureAD
+        return
+    }
+
+    try {
+        $subscription = Get-AzureRmSubscription -SubscriptionName $AzureSubscription -ErrorAction Stop
+        Select-AzureRmSubscription -Subscription $subscription -ErrorAction Stop
+    } catch {
+        "Unable to select the desired subscription ({0})." -f $AzureSubscription | Write-Host -ForegroundColor Red
+        $_ | Out-String | Write-Host -ForegroundColor Grey
+        "Disconnecting from AzureAD and Azure then quitting." | Write-Host
+        Disconnect-AzureAD
+        Disconnect-AzureRmAccount
+        return
+    }
+}
 
 $oldErrorActionPreference = $ErrorActionPreference
 $ErrorActionPreference = "Stop"
@@ -122,7 +148,8 @@ try{
     }
     Write-Host "Done!" -ForegroundColor Green
 
-    $users = $studentDetails | % {
+    "Generating student users in AzureAD..." | Write-Host -ForegroundColor White
+    $studentDetails | % {
         Write-Host ("Creating '{0}'..." -f $_.UserPrincipalName) -NoNewline
         $user = New-AzureADUser @_
         $usersCreated += $user
@@ -133,6 +160,37 @@ try{
         }
         Write-Host "Done!" -ForegroundColor Green
     }
+    "Users created and configured." | Write-Host -ForegroundColor Green
+
+    if ($AzureSubscription) {
+        $resourceGroups = @()
+        "Generating Resource Groups..." | Write-Host -ForegroundColor White
+        try {
+            $usersCreated | % {
+                $u = $_
+                "Generating Resource Group named '{0}'..." -f $u.DisplayName | Write-Host -ForegroundColor White -NoNewline
+                $rg = New-AzureRmResourceGroup -Name $u.DisplayName -Location "West Europe"
+                "Done." | Write-Host -ForegroundColor Green
+                $resourceGroups += $rg
+                
+                "Assigning 'Contributor' role for '{0}' on '{1}'..." -f $u.UserPrincipalName, $u.DisplayName | Write-Host -ForegroundColor White -NoNewline
+                New-AzureRmRoleAssignment -SignInName $u.UserPrincipalname -ResourceGroupName $u.DisplayName -RoleDefinitionName "Contributor"
+                "Done." | Write-Host -ForegroundColor Green
+            }
+        } catch {
+            "An error was encountered while generating Resource Groups:" | Write-Host -ForegroundColor Red
+            $_ | Out-String | Write-Host -ForegroundColor Gray
+            Write-Host "Rolling back generated Resource Groups..."
+            $resourceGroups | % {
+                "Removing '{0}'..." -f $_.ResourceGroupName | Write-Host -ForegroundColor White -NoNewline
+                $_ | Remove-AzureRmResourceGroup -ErrorAction Continue
+                Write-Host "Done." -ForegroundColor DarkGray
+            }
+            "Finished rolling back resource groups." | Write-Host
+            throw $_
+        }
+        "Finished generating resourtce groups." | Write-Host -ForegroundColor Green
+    }
 
     $studentDetails | % { "{0},{1},{2}" -f $_.UserPrincipalName,$ValidTo.Ticks,$connectionDetailsAD.TenantId } | Out-File "$PSScriptRoot\students.csv" -Encoding utf8 -Append
 
@@ -141,7 +199,6 @@ try{
     Write-host ""
     Write-Host "Password: $Password"
     Write-Host ("-"*80)
-
 
 } catch {
     Write-Host "An error was encountered while generating users:" -ForegroundColor Red
