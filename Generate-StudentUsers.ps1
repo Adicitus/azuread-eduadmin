@@ -1,4 +1,4 @@
-﻿#require -Modules AzureAD, AzureRM
+﻿#require -Modules AzureAD, Az
 
 Param(
     [parameter(Mandatory=$true, HelpMessage="Number of users to generate. (0-2000)", ParameterSetName="series")]
@@ -59,7 +59,7 @@ $connectionDetailsAD = Connect-AzureAD -Credential $Credential -ErrorAction Stop
 
 if ($AzureSubscription) {
     try{
-        $connectionDetailsRM = Connect-AzureRmAccount -Credential $Credential -ErrorAction Stop
+        $connectionDetailsRM = Connect-AzAccount -Credential $Credential -ErrorAction Stop
         "Logged on to Azure as '{0}'" -f $connectionDetailsRM.Context.Account.Id | Write-Host -ForegroundColor Magenta
     } catch {
         Write-Host "Unable to connect to to Azure Tennant." -ForegroundColor Red
@@ -70,14 +70,14 @@ if ($AzureSubscription) {
     }
 
     try {
-        $subscription = Get-AzureRmSubscription -SubscriptionName $AzureSubscription -ErrorAction Stop
-        Select-AzureRmSubscription -Subscription $subscription -ErrorAction Stop
+        $subscription = Get-AzSubscription -SubscriptionName $AzureSubscription -ErrorAction Stop
+        Select-AzSubscription -Subscription $subscription -ErrorAction Stop
     } catch {
         "Unable to select the desired subscription ({0})." -f $AzureSubscription | Write-Host -ForegroundColor Red
         $_ | Out-String | Write-Host -ForegroundColor Grey
         "Disconnecting from AzureAD and Azure then quitting." | Write-Host
         Disconnect-AzureAD
-        Disconnect-AzureRmAccount
+        Disconnect-AzAccount
         return
     }
 }
@@ -169,12 +169,12 @@ try{
             $usersCreated | % {
                 $u = $_
                 "Generating Resource Group named '{0}'..." -f $u.DisplayName | Write-Host -ForegroundColor White -NoNewline
-                $rg = New-AzureRmResourceGroup -Name $u.DisplayName -Location "West Europe"
+                $rg = New-AzResourceGroup -Name $u.DisplayName -Location "West Europe"
                 "Done." | Write-Host -ForegroundColor Green
                 $resourceGroups += $rg
                 
                 "Assigning 'Contributor' role for '{0}' on '{1}'..." -f $u.UserPrincipalName, $u.DisplayName | Write-Host -ForegroundColor White -NoNewline
-                New-AzureRmRoleAssignment -SignInName $u.UserPrincipalname -ResourceGroupName $u.DisplayName -RoleDefinitionName "Contributor"
+                New-AzRoleAssignment -SignInName $u.UserPrincipalname -ResourceGroupName $u.DisplayName -RoleDefinitionName "Contributor"
                 "Done." | Write-Host -ForegroundColor Green
             }
         } catch {
@@ -183,7 +183,7 @@ try{
             Write-Host "Rolling back generated Resource Groups..."
             $resourceGroups | % {
                 "Removing '{0}'..." -f $_.ResourceGroupName | Write-Host -ForegroundColor White -NoNewline
-                $_ | Remove-AzureRmResourceGroup -ErrorAction Continue
+                $_ | Remove-AzResourceGroup -ErrorAction Continue
                 Write-Host "Done." -ForegroundColor DarkGray
             }
             "Finished rolling back resource groups." | Write-Host
