@@ -9,7 +9,7 @@ Param(
     [ValidateLength(4, 2147483647)]
     [string]$courseID,
 
-    [parameter(Mandatory=$false, HelpMessage="Password to set for the users. (At least 8 characters)")]
+    [parameter(Mandatory=$false, HelpMessage="Password to set for the users (At least 8 characters). Will be auto-generated if not provided.")]
     [ValidateLength(8, 2147483647)]
     [string]$Password,
     
@@ -17,31 +17,43 @@ Param(
     [ValidateRange(1, 2000)]
     [int]$StartIndex=1,
 
-    [parameter(Mandatory=$false, HelpMessage="Groups that the users should be added to (a single string or an array of strings).")]
+    [parameter(Mandatory=$false, HelpMessage="Groups that the users should be added to (a single string or an array of strings). Default is: Students, Students.licenses")]
     $GroupNames=@("Students","Students.Licenses"),
 
     [parameter(Mandatory=$false, HelpMessage="Optional prefix for the username. (Default '')", ParameterSetName="series")]
     [ValidateLength(0, 2147483647)]
     [string]$NamePrefix="",
 
-    [parameter(Mandatory=$false, HelpMessage="Date that the course will commence on.")]
+    [parameter(Mandatory=$false, HelpMessage="Date that the course will commence on. Default is now.")]
     [datetime]$CourseStart = [datetime]::now,
 
     [parameter(Mandatory=$false, HelpMessage="How long the account should remain accessible after the start of the course (1-365, default 7)")]
     [ValidateRange(1, 365)]
     [int]$ValidityDays = 7,
 
-    [parameter(Mandatory=$false, HelpMessage="Credential to use when connecting to the tennant")]
+    [parameter(Mandatory=$false, HelpMessage="Credential to use when connecting to the tennant. If not provided, the system will attempt to query the user.")]
     [pscredential]$Credential,
 
-    [parameter(Mandatory=$false, HelpMessage="Domain to use for the UserPrincipalname. Must be a domain registered to the tenant.")]
+    [parameter(Mandatory=$false, HelpMessage="Domain to use for the UserPrincipalname. Must be a domain registered to the tenant. Defaults to primary domain for the tenant.")]
     [string]$Domain,
 
-    [parameter(Mandatory=$false, HelpMessage="Generate a Resource Group within the given Azure Subscription.")]
-    [String]$AzureSubscription
+    [parameter(Mandatory=$false, HelpMessage="Generate a Resource Group within the given Azure Subscription. If this parameter is not specified, then no changes will be made in Azure (just AzureAD).")]
+    [String]$AzureSubscription,
+
+    [Parameter(Mandatory=$false, HelpMessage="Specifies that the standard group names should not be added to -GroupNames if not already present.")]
+    [switch]$IgnoreDefaultGroupNames
 )
 
+$defaultGroupNames = "Students", "Students.Licenses"
 $ValidTo = [datetime]::new($CourseStart.Year, $CourseStart.Month, $CourseStart.Day) + ([timespan]::FromDays($ValidityDays)) 
+
+if (-not $IgnoreDefaultGroupNames) {
+    foreach($groupName in $defaultGroupNames) {
+        if (@($GroupNames) -notcontains $groupName) {
+            $GroupNames = @($GroupNames) + $groupName
+        }
+    }
+}
 
 if ($ValidTo -lt [datetime]::Now) {
     Write-Host ("The end date for the accounts is set in the past! ({0:yyyy/MM/dd - hh:mm:ss})" -f $ValidTo) -ForegroundColor Red
