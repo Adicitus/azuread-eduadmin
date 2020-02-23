@@ -70,6 +70,15 @@ $connectionDetailsAD = Connect-AzureAD -Credential $Credential -ErrorAction Stop
 "Logged on to AzureAD '{0}' ({1}) as '{2}'" -f $connectionDetailsAD.TenantDomain, $connectionDetailsAD.Environment, $connectionDetailsAD.Account | Write-Host -ForegroundColor Magenta
 
 if ($AzureSubscription) {
+    try {
+        $AzureRGLocations = Get-Content "$PSScriptRoot\locations.txt"
+    } catch {
+        $AzureRGLocations = @("West Europe")
+    }
+    
+    $azureRGLocationsQ = [System.Collections.Queue]::new()
+    $AzureRGLocations | % { $azureRGLocationsQ.Enqueue($_) }
+    
     try{
         $connectionDetailsRM = Connect-AzAccount -Credential $Credential -ErrorAction Stop
         "Logged on to Azure as '{0}'" -f $connectionDetailsRM.Context.Account.Id | Write-Host -ForegroundColor Magenta
@@ -86,7 +95,7 @@ if ($AzureSubscription) {
         Select-AzSubscription -Subscription $subscription -ErrorAction Stop
     } catch {
         "Unable to select the desired subscription ({0})." -f $AzureSubscription | Write-Host -ForegroundColor Red
-        $_ | Out-String | Write-Host -ForegroundColor Grey
+        $_ | Out-String | Write-Host -ForegroundColor Gray
         "Disconnecting from AzureAD and Azure then quitting." | Write-Host
         Disconnect-AzureAD
         Disconnect-AzAccount
@@ -180,8 +189,13 @@ try{
         try {
             $usersCreated | % {
                 $u = $_
+                
+                $loc = $azureRGLocationsQ.Dequeue()
+                $azureRGLocationsQ.Enqueue($loc)
+                
+                
                 "Generating Resource Group named '{0}'..." -f $u.DisplayName | Write-Host -ForegroundColor White -NoNewline
-                $rg = New-AzResourceGroup -Name $u.DisplayName -Location "West Europe"
+                $rg = New-AzResourceGroup -Name $u.DisplayName -Location $loc
                 "Done." | Write-Host -ForegroundColor Green
                 $resourceGroups += $rg
                 
