@@ -18,11 +18,14 @@ try {
     $students = Get-Content "$PSScriptRoot\students.csv" | ConvertFrom-CSV
     $tennantStudents = $students | ? { $_.TennantID -eq $tid }
     $expiredStudents = $tennantStudents | ? { $_.Ends -lt ([datetime]::Now.Ticks) }
-    
+
     #$expiredStudents | ConvertTo-Json | Write-Host
 
     $missingStudents = @()
     $removedStudents = @()
+    $removedGroups = @()
+
+    "Checking for expired locally listed users..." | Write-Host
 
     @($expiredStudents) | % {
         $f = "UserPrincipalName eq '{0}'" -f $_.UserPrincipalName
@@ -46,8 +49,27 @@ try {
         }
         Write-Host "They were removed from the records." -ForegroundColor Cyan
     }
+
+    "Checking for expired classes..." | Write-Host
+
+    $existingClassGroups = Get-AzureADGroup -Filter "startswith(DisplayName,'students.class')"
+
+    foreach ($eClassGroup in $existingClassGroups) {
+        $s = $eClassGroup.Description | ConvertFrom-Json -ErrorAction SilentlyContinue
+        if ($s -and ($s.ValidTo -lt [Datetime]::Now)) {
+            $removedGroups += $eClassGroup
+            $ms = $eClassGroup | Get-AzureAdGroupMember
+            $ms | ForEach-Object {
+                $removedStudents += @{
+                    UserPrincipalName = $_.UserPrincipalName
+                    Ends = $s.ValidTo.Ticks
+                }
+            }
+        }
+    }
+
     if ($removedStudents.Count -gt 0) {
-        Write-Host "The following accounts will be removed from the tennant:" -ForegroundColor Yellow
+        Write-Host "The following accounts will be removed from the tenant:" -ForegroundColor Yellow
         Write-Host ("{0,-50}{1}" -f "UPN","|Ended")
         Write-Host ("-" * 80)
         $removedStudents | % {
@@ -56,7 +78,6 @@ try {
 
         $r = Read-Host "Proceed? Y/N"
         if ($r -like "Y*") {
-            # TODO: Proceed with removal.
             $removedStudents | % {
                 $upn = $_.UserPrincipalName
                 Write-Host "Removing '$upn'... " -NoNewline
@@ -66,6 +87,15 @@ try {
                 $students = $students | ? { !(($_.UserPrincipalName -eq $upn) -and ($_.TennantID -eq $tid)) }
 
                 Write-Host "Done!" -ForegroundColor Green
+            }
+            
+
+            if ($removedGroups.Count -gt 0) {
+                $removedGroups | % {
+                    "Removing group '{0}'..." -f $_.DisplayName | Write-Host -NoNewline
+                    $_ | Remove-AzureADGroup
+                    "Done." |  Write-Host -ForegroundColor Green
+                }
             }
         } else {
             Write-Host "Aborting without making any changes to the tennant!" -ForegroundColor Yellow

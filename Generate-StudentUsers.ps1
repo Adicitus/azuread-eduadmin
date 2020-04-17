@@ -118,6 +118,33 @@ try{
         }
         $o
     }
+
+    $classGroupName = "students.class.{0}" -f $courseID
+    "Getting class group ({0})..." -f $classGroupName | Write-Host
+    $classGroup = Get-AzureADGroup -Filter ("DisplayName eq '{0}'" -f $classGroupName) -All $true -ErrorAction SilentlyContinue
+    if ($classGroup) {
+        " |  Using existing Class group." | Write-Host
+    } else {
+        " |  Creating a new Class group..." | write-Host
+        $newClassArgs = @{
+            DisplayName=$classGroupName
+            MailEnabled=$false
+            MailNickName=$classGroupName
+            SecurityEnabled=$true
+        }
+
+        $classSettings = @{
+            ValidTo=$ValidTo
+        }
+
+        $newClassArgs.Description = $classSettings | ConvertTo-Json
+
+        $classGroup = New-AzureADGroup @newClassArgs
+        " | Done." | Write-Host
+    }
+
+    $groups += $classGroup
+
     Write-Host "Done!" -ForegroundColor Green
 
     Write-Host "Selecting domain..." -NoNewline
@@ -147,6 +174,7 @@ try{
         Write-Host $tPassword
         $Password = $tPassword
     }
+
     Write-Host "Generating student details..." -NoNewline
     $studentDetails = for ($i = 0; $i -lt $Count; $i++ ) { # Hard-coded student details, these should probably be overridable/extendable with a parameter.
         $name = "{0}{1}{2}" -f $NamePrefix, $courseID, ("$($i + $startIndex)".PadLeft(2,"0"))
