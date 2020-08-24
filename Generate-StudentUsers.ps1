@@ -227,9 +227,15 @@ try{
                 "Done." | Write-Host -ForegroundColor Green
                 $resourceGroups += $rg
                 
-                "Assigning 'Contributor' role for '{0}' on '{1}'..." -f $u.UserPrincipalName, $u.DisplayName | Write-Host -ForegroundColor White -NoNewline
+                "Assigning 'Contributor' role for '{0}' on Resource Group '{1}'..." -f $u.UserPrincipalName, $u.DisplayName | Write-Host -ForegroundColor White -NoNewline
                 New-AzRoleAssignment -SignInName $u.UserPrincipalname -ResourceGroupName $u.DisplayName -RoleDefinitionName "Contributor"
                 "Done." | Write-Host -ForegroundColor Green
+
+                "Assigning 'Reader' role for '{0}' on Subscription '{1}'..." -f $u.UserPrincipalName, $AzureSubscription | Write-Host -ForegroundColor White -NoNewline
+                $subscriptionScope = "/Subscriptions/{0}" -f $AzureSubscription
+                New-AzRoleAssignment -SignInName $u.UserPrincipalName -Scope $subscriptionScope -RoleDefinitionName "Reader"
+                "Done." | Write-Host -ForegroundColor Green
+
             }
         } catch {
             "An error was encountered while generating Resource Groups:" | Write-Host -ForegroundColor Red
