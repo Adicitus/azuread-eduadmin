@@ -1,4 +1,4 @@
-﻿#require -Modules AzureAD, Az
+﻿#requires -Modules AzureAD, Az.Accounts, Az.Resources
 
 Param(
     [parameter(Mandatory=$true, HelpMessage="Number of users to generate. (0-2000)", ParameterSetName="series")]

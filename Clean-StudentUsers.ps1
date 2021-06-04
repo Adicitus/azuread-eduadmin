@@ -1,6 +1,6 @@
-param($Credential = $null)
+#requires -Modules AzureAD
 
-Import-Module AzureAD -ErrorAction Stop
+param($Credential = $null)
 
 if (!$Credential) {
     $Credential = Get-Credential -Message "Please enter your Office 365 credentials." -ErrorAction Stop
