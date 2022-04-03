@@ -108,15 +108,17 @@ $ErrorActionPreference = "Stop"
 
 $usersCreated = @()
 
+$groups = [System.Collections.ArrayList]::new()
+
 try{
     Write-Host "Collecting Group information..." -NoNewline
-    $groups = $GroupNames | ? { $_ -ne $null } | % {
+    $GroupNames | ? { $_ -ne $null } | % {
         $gn = $_
         $o = Get-AzureADGroup -All $true | ? { $_.DisplayName -eq $gn }
         if (!$o) {
             throw "Invalid group name provided! The group '$gn' does not exist in this tennant!"
         }
-        $o
+        $groups.Add($o) | Out-Null
     }
 
     $classGroupName = "students.class.{0}" -f $courseID
@@ -143,7 +145,7 @@ try{
         " | Done." | Write-Host
     }
 
-    $groups += $classGroup
+    $groups.Add($classGroup)
 
     Write-Host "Done!" -ForegroundColor Green
 
@@ -203,9 +205,13 @@ try{
         $user = New-AzureADUser @_
         $usersCreated += $user
         Write-Host "Done!" -ForegroundColor Green
-        Write-Host ("Adding to groups ({0})..." -f @($groups).Length) -NoNewline
+        " -- Adding to {0} groups..." -f $groups.Count| Write-Host
         if ($groups) {
-            $groups | % { Add-AzureADGroupMember -ObjectId $_.ObjectId -RefObjectId $user.ObjectId }
+            $groups | ForEach-Object {
+                " ---- Adding to '{0}'... " -f $_.DisplayName | Write-Host -NoNewline
+                Add-AzureADGroupMember -ObjectId $_.ObjectId -RefObjectId $user.ObjectId
+                Write-Host "done." -ForegroundColor Green
+            }
         }
         Write-Host "Done!" -ForegroundColor Green
     }
